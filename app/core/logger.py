@@ -1,11 +1,6 @@
 import logging
 import sys
-
-# 1. إعداد التنسيق (Format) للرسائل
-# %(asctime)s: وقت حدوث العملية
-# %(levelname)s: مستوى الرسالة (INFO, ERROR, etc.)
-# %(name)s: اسم الملف أو الجزء الذي أرسل الرسالة
-# %(message)s: نص الرسالة الفعلي
+  
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 
 def setup_logger():
