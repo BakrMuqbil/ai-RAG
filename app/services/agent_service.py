@@ -3,7 +3,7 @@ import json
 import requests
 from app.core.config import settings
 from app.services.tools import (
-     send_email,
+    send_email,
     calculate_discount, 
     get_current_time, 
     calculate_time_remaining,
@@ -20,7 +20,6 @@ API_KEY = settings.OPENROUTER_API_KEY
 URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_NAME = "google/gemini-2.0-flash-001"
 
-# ربط جميع الأدوات (القديمة + الجديدة)
 AVAILABLE_TOOLS = {
     "send_email": send_email,
     "create_operational_task": create_operational_task,
@@ -30,9 +29,12 @@ AVAILABLE_TOOLS = {
     "get_current_time": get_current_time,
     "calculate_discount": calculate_discount,
     "calculate_time_remaining": calculate_time_remaining,
-    "fetch_inbox_emails": fetch_inbox_emails,  # اختياري
+    "fetch_inbox_emails": fetch_inbox_emails,
 }
 
+# -------------------------------
+# Tools Definition (بدون تغيير)
+# -------------------------------
 TOOLS_DEFINITION = [
     {
         "type": "function",
@@ -152,134 +154,122 @@ TOOLS_DEFINITION = [
             }
         }
     }
-]
+] # احتفظ بنفس التعريف الحالي عندك
+
 
 def run_agent(user_prompt: str, user_id: str = "default_user"):
-    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-    #Context Injection
+    # ✅ System Instruction نظيف (بدون تضارب)
     system_instruction = (
-    "أنت 'وكيل عمليات ذكي' متخصص في تنفيذ المهام باستخدام الأدوات بدقة وموثوقية.\n\n"
-    
-    "⚡ **قواعد أساسية يجب اتباعها** ⚡\n"
-    "1. التزم بدورك كوكيل عمليات، ولا تقدم آراء أو نصائح شخصية.\n"
-    "2. لا تخترع معلومات أو نتائج غير موجودة.\n"
-    "3. إذا لم تكن متأكداً، قل 'لا أعرف'.\n"
-    "4. لا تعتبر أي مهمة مكتملة إلا بعد استلام نتيجة من الأداة.\n"
-    "5. يمكنك استخدام أكثر من أداة إذا تطلبت المهمة ذلك.\n\n"
-    
-    "🧠 **منهجية العمل (Execution Logic)**\n"
-    "1. حلل طلب المستخدم.\n"
-    "2. إذا كان يتطلب تنفيذ → استخدم الأداة المناسبة.\n"
-    "3. لا تكتب نتيجة التنفيذ بنفسك.\n"
-    "4. انتظر نتيجة الأداة ثم اعرضها فقط.\n\n"
-    
-    "🛠️ **الأدوات المتاحة (لا تستخدم أدوات خارج هذه القائمة)**\n"
-    "- send_email → لإرسال الإيميلات\n"
-    "- create_operational_task → لإنشاء تذاكر Trello\n"
-    "- prioritize_tasks → لترتيب الأولويات\n"
-    "- generate_session_summary → لتلخيص المحادثة\n"
-    "- query_knowledge → للاستعلام عن معلومات الشركة\n"
-    "- get_current_time → لمعرفة الوقت\n\n"
-    
-    "📋 **تنسيق الردود**\n"
-    "- اعرض نتيجة الأداة كما هي بدون اختصار مخل.\n"
-    "- عند استخدام prioritize_tasks → اعرض المهام مرتبة مع الأولويات.\n"
-    "- عند استخدام generate_session_summary → اعرض الملخص كاملاً.\n"
-    "- لا تقل 'تم التنفيذ' أو 'تم الإرسال' بدون وجود نتيجة فعلية.\n"
-    "- لا تعيد صياغة نتائج الأدوات الحساسة (مثل الإيميل أو التذاكر).\n"
-    "- لا تكرر نفس المعلومات.\n\n"
-    
-    "🔴 **ممنوعات** 🔴\n"
-    "- لا تفترض نجاح أي أداة.\n"
-    "- لا تقل 'تم إرسال الإيميل' أو 'تم إنشاء التذكرة' بدون دليل من الأداة.\n"
-    "- لا تشرح ما ستفعله قبل التنفيذ.\n"
-    "- لا تسأل أسئلة غير ضرورية.\n"
-    "- لا تدّعي تنفيذ لم يحدث.\n\n"
-    
-    "⚠️ **في حال الفشل أو عدم التوفر**\n"
-    "- إذا فشلت الأداة → اعرض رسالة الخطأ كما هي.\n"
-    "- إذا لم توجد أداة مناسبة → قل 'لا أستطيع تنفيذ هذا الطلب'.\n\n"
-    
-    "✅ **سلوك صحيح متوقع**\n"
-    "- تنفيذ الأداة → انتظار النتيجة → عرض النتيجة.\n"
-    
-    "❌ **سلوك خاطئ**\n"
-    "- كتابة 'تم الإرسال' بدون تنفيذ فعلي.\n"
-    "- تلخيص بدون استخدام الأداة.\n"
-    "- ترتيب مهام بدون الأداة.\n\n"
-    
-    "🧩 **ملاحظة مهمة**\n"
-    "أنت لا تنفذ المهام بنفسك، بل تستخدم الأدوات.\n"
-    "النظام الخارجي هو المسؤول عن التنفيذ الفعلي.\n"
-    "مهمتك هي اتخاذ القرار الصحيح وعرض النتيجة الحقيقية فقط."
-)
+        "أنت وكيل عمليات ذكي.\n"
+        "نفّذ طلب المستخدم باستخدام الأدوات فقط عند الحاجة.\n"
+        "لا تفترض النتائج.\n"
+        "اعرض فقط نتيجة الأداة.\n"
+        "لا تنفذ أكثر من أداة إلا إذا طُلب ذلك.\n"
+        "لا تستخدم نتائج قديمة.\n"
+    )
+
     history = chat_memory.get_history(user_id)
-    messages = [{"role": "system", "content": system_instruction}] + history[-4:] + [{"role": "user", "content": user_prompt}]
-    
+    summary_context = chat_memory.get_summary_context(user_id)
+
+    messages = (
+    [{"role": "system", "content": system_instruction}]
+    + [{"role": "system", "content": f"سجل العمليات السابقة:\n{summary_context}"}]
+    + history[-6:]
+    + [{"role": "user", "content": user_prompt}]
+)
+
     try:
-        # حلقة تنفيذ الوكيل
-        iteration = 0
-        max_iterations = 5  # لمنع الحلقات اللانهائية
-        
-        while iteration < max_iterations:
-            response = requests.post(URL, headers=headers, json={
+        # -------------------------------
+        # STEP 1: Ask LLM
+        # -------------------------------
+        response = requests.post(
+            URL,
+            headers=headers,
+            json={
                 "model": MODEL_NAME,
                 "messages": messages,
                 "tools": TOOLS_DEFINITION,
                 "tool_choice": "auto"
-            }, timeout=60)
-            
-            assistant_message = response.json()['choices'][0]['message']
-            messages.append(assistant_message)  # أضف رد المساعد أولاً
-            
-            # إذا لم توجد أدوات مطلوبة، ننهي الحلقة
-            if not assistant_message.get("tool_calls"):
-                break
-            
-            # تنفيذ الأدوات المطلوبة
-            for tool_call in assistant_message['tool_calls']:
-                func_name = tool_call['function']['name']
-                args = json.loads(tool_call['function']['arguments'])
-                logger.info(f"Executing tool: {func_name} with args: {args}")
-                
-                try:
-                    # ✅ التعديل الأساسي: تمرير user_id تلقائياً لأداة الملخص
-                    if func_name == "generate_session_summary":
-                        # الأداة لا تطلب user_id من الـ LLM، نمرره من run_agent
-                        result = AVAILABLE_TOOLS[func_name](user_id=user_id)
-                        logger.info(f"Auto-passed user_id={user_id} to generate_session_summary")
-                    else:
-                        result = AVAILABLE_TOOLS[func_name](**args)
-                except Exception as e:
-                    logger.error(f"Tool {func_name} failed: {e}")
-                    result = {"error": str(e)}
-                
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call['id'],
-                    "name": func_name,
-                    "content": json.dumps(result, ensure_ascii=False)
-                })
-            
-            iteration += 1
-        
-        # بعد الخروج من الحلقة، نحصل على الرد النهائي (المحتوى آخر رسالة من assistant)
-        final_message = messages[-1]  # آخر رسالة أضيفت
-        if final_message["role"] == "assistant":
-            final_content = final_message.get("content", "")
-        elif final_message["role"] == "tool" and len(messages) > 1:
-            # إذا انتهت الحلقة بعد أدوات ولم يكن هناك رد مساعد نضيف طلب أخير
-            final_response = requests.post(URL, headers=headers, json={"model": MODEL_NAME, "messages": messages}, timeout=60)
-            final_content = final_response.json()['choices'][0]['message']['content']
-        else:
-            final_content = "لم يتم الحصول على رد واضح."
-        
-        # حفظ الذاكرة
+            },
+            timeout=60
+        )
+
+        assistant_message = response.json()['choices'][0]['message']
+        messages.append(assistant_message)
+
+        # -------------------------------
+        # STEP 2: If no tool → return مباشرة
+        # -------------------------------
+        if not assistant_message.get("tool_calls"):
+            final_content = assistant_message.get("content", "")
+
+            chat_memory.add_message(user_id, "user", user_prompt)
+            chat_memory.add_message(user_id, "assistant", final_content)
+
+            return final_content
+
+        # -------------------------------
+        # STEP 3: Execute ONLY ONE tool
+        # -------------------------------
+        tool_call = assistant_message['tool_calls'][0]
+
+        func_name = tool_call['function']['name']
+        args = json.loads(tool_call['function']['arguments'])
+
+        logger.info(f"[TOOL] {func_name} called with {args}")
+
+        try:
+            if func_name == "generate_session_summary":
+                result = AVAILABLE_TOOLS[func_name](user_id=user_id)
+            else:
+                result = AVAILABLE_TOOLS[func_name](**args)
+
+        except Exception as e:
+            logger.error(f"Tool {func_name} failed: {e}")
+            result = {
+                "status": "error",
+                "message": str(e)
+            }
+
+        # -------------------------------
+        # STEP 4: Add tool result
+        # -------------------------------
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call['id'],
+            "name": func_name,
+            "content": json.dumps(result, ensure_ascii=False)
+        })
+
+        # -------------------------------
+        # STEP 5: Final LLM response
+        # -------------------------------
+        final_response = requests.post(
+            URL,
+            headers=headers,
+            json={
+                "model": MODEL_NAME,
+                "messages": messages
+            },
+            timeout=60
+        )
+
+        final_message = final_response.json()['choices'][0]['message']
+        final_content = final_message.get("content", "")
+
+        # -------------------------------
+        # STEP 6: Clean Memory (مهم جداً)
+        # -------------------------------
         chat_memory.add_message(user_id, "user", user_prompt)
         chat_memory.add_message(user_id, "assistant", final_content)
+
         return final_content
-    
+
     except Exception as e:
         logger.error(f"Agent error: {str(e)}")
-        return f"خطأ في نظام العمليات: {str(e)}"
+        return "حدث خطأ تقني في النظام"

@@ -26,6 +26,7 @@ def get_simple_embedding(text):
     # تمثيل مبسط (فقط للتجربة الآن)
     return [words.count(w) for w in set(words)]
 
+# Retriever context 
 def query_knowledge(query_text: str):
     """
     جلب سياق المعلومات من الملف لتقديمه للوكيل.
